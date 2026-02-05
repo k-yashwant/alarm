@@ -24,7 +24,7 @@
 #define BUZZER_ON           0
 #define BUZZER_OFF          1
 
-#define SNOOZE_MINUTES      10
+#define SNOOZE_MINUTES      0.1
 
 static const char *TAG = "ALARM_TRIGGER_FUNCTION";
 
@@ -36,6 +36,28 @@ volatile bool keep_running = true;
 // ------------------------------------------------------------------------
 // 1. INTERRUPT HANDLER (ISR)
 // ------------------------------------------------------------------------
+
+static TimerHandle_t snooze_timer;
+
+void snooze_timer_cb(TimerHandle_t xTimer)
+{
+    ESP_LOGI(TAG, "Snooze complete");
+    // wake alarm again
+}
+
+void start_snooze()
+{
+    snooze_timer = xTimerCreate(
+        "snooze",
+        pdMS_TO_TICKS(SNOOZE_MINUTES * 60 * 1000),
+        pdFALSE,
+        NULL,
+        snooze_timer_cb
+    );
+
+    xTimerStart(snooze_timer, 0);
+}
+
 void IRAM_ATTR gpio_isr_handler(void* arg)
 {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
@@ -83,31 +105,34 @@ void buzzer_pattern_task(void* arg){
     gpio_set_level(ALARM_PIN, BUZZER_OFF); 
 
     //Configure Push Button
-    if (alarm_ringing_state == 0){
-        Button_Init();
 
-        ESP_LOGI(TAG, "Alarm Started!. Press Button to Snooze or enter the code in serial");
+    Button_Init();
 
-        while (keep_running) {
+    ESP_LOGI(TAG, "Alarm Started!. Press Button to Snooze or enter the code in serial");
 
-            gpio_set_level(ALARM_PIN, BUZZER_ON);
+    while (keep_running) {
 
-            // // Wait Duration OR Button Press
-            if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(BEEP_DURATION_1)) > 0) {
-                break;
-            }
-            
-            gpio_set_level(ALARM_PIN, BUZZER_OFF);
-            
-            // Wait for BEEP_INTERVAL. Check for button press again.
-            if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(BEEP_INTERVAL_1)) > 0) {
-                break;
-            }
+        gpio_set_level(ALARM_PIN, BUZZER_ON);
+
+        // // Wait Duration OR Button Press
+        if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(BEEP_DURATION_1)) > 0) {
+            break;
         }
+        
+        gpio_set_level(ALARM_PIN, BUZZER_OFF);
+        
+        // Wait for BEEP_INTERVAL. Check for button press again.
+        if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(BEEP_INTERVAL_1)) > 0) {
+            break;
+        }
+    }
 
         gpio_set_level(ALARM_PIN, BUZZER_OFF);
         xTaskNotifyStateClear(NULL);
-    }
+    
+    gpio_reset_pin(ALARM_PIN);
+    gpio_set_direction(ALARM_PIN, GPIO_MODE_OUTPUT);
+    gpio_set_level(ALARM_PIN, BUZZER_OFF);
     ESP_LOGI(TAG, "You have chosen to snooze for sometime");
     for(int i = 0; i < (SNOOZE_MINUTES * 60); i++) {
         if(!keep_running) break; 

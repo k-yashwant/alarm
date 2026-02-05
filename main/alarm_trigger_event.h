@@ -16,7 +16,6 @@ void Button_Init();
 // This tells other files that TriggerAlarm exists
 void TriggerAlarm();
 extern volatile bool is_alarm_active;
-extern RTC_DATA_ATTR int alarm_ringing_state;
 
 
 #endif
