@@ -15,4 +15,6 @@ dependencies:
   #   # All dependencies of `main` are public by default.
   #   public: true
   espressif/led_strip: ^3.0.2
+  espressif/esp_tinyusb:
+    version: ^2.0.0
 
