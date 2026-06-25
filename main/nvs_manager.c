@@ -92,18 +92,18 @@ alarm_epoch_t trigger_time_remaining(alarm_entry_t *candidate, current_time_t *c
     if (candidate -> days == 0) return alarm_epoch;
 
     uint16_t alarm_mins = candidate->hour * 60 + candidate->minute;
-    ESP_LOGI(TAG_trigger_time_remaining, "%d", alarm_mins);
+    ESP_LOGD(TAG_trigger_time_remaining, "%d", alarm_mins);
     uint8_t check_day_mask = current_time->day_bitmask;
     uint32_t diff_time = UINT32_MAX;
     int day_offset=0;
 
     for (day_offset=0; day_offset<=7; day_offset++){     
-        ESP_LOGI(TAG_trigger_time_remaining, "%d and %d", candidate->days, check_day_mask);
+        ESP_LOGD(TAG_trigger_time_remaining, "%d and %d", candidate->days, check_day_mask);
         if (candidate->days & check_day_mask){
             if (day_offset == 0){ // alarm scheduled for current day
                 if (alarm_mins > current_time->minutes_since_day){
                     diff_time = alarm_mins - current_time->minutes_since_day;
-                    ESP_LOGI(TAG_trigger_time_remaining, "Zero day offset");
+                    ESP_LOGD(TAG_trigger_time_remaining, "Zero day offset");
                     break;
                 }
             }else{
@@ -111,13 +111,13 @@ alarm_epoch_t trigger_time_remaining(alarm_entry_t *candidate, current_time_t *c
                 uint32_t full_days_mins = (day_offset - 1) * MINUTES_IN_A_DAY;
                 
                 diff_time = mins_left_today + full_days_mins + alarm_mins;
-                ESP_LOGI(TAG_trigger_time_remaining, "%d day offset", day_offset);
+                ESP_LOGD(TAG_trigger_time_remaining, "%d day offset", day_offset);
                 break;
             }
         }
         check_day_mask = get_next_day_mask(check_day_mask);
     } 
-    ESP_LOGI(TAG_trigger_time_remaining, "Time remaining %lu, day offset %d", diff_time, day_offset);
+    ESP_LOGD(TAG_trigger_time_remaining, "Time remaining %lu, day offset %d", diff_time, day_offset);
     alarm_epoch.time_remaining = diff_time;
     alarm_epoch.day_offset = day_offset;
 
@@ -162,7 +162,7 @@ bool fetch_nearest_alarm_timestamp(time_t *nearest_alarm_timestamp){ // get the 
         alarm_entry_t *candidate = (alarm_entry_t*) &current_alarm_config.alarms[i];
         alarm_epoch = trigger_time_remaining(candidate, &current_time);
         uint32_t diff_time = alarm_epoch.time_remaining;
-        printf("%lu time remaining\n", diff_time);
+        ESP_LOGD(TAG_fetch_nearest_alarm, "%lu time remaining", (unsigned long)diff_time);
         if (diff_time == UINT32_MAX) continue;
 
         if (diff_time < min_diff_minutes){
@@ -171,7 +171,7 @@ bool fetch_nearest_alarm_timestamp(time_t *nearest_alarm_timestamp){ // get the 
             day_offset = alarm_epoch.day_offset;
         }
     }
-    ESP_LOGI(TAG_fetch_nearest_alarm,"%lld seconds remaining", min_diff_minutes);
+    ESP_LOGI(TAG_fetch_nearest_alarm, "Nearest alarm in %lu minutes (%lu seconds)", (unsigned long)min_diff_minutes, (unsigned long)(min_diff_minutes * 60));
     if (min_diff_minutes < UINT32_MAX){
         // *next_nearest_alarm = *nearest_alarm;
        // make an alarm timestamp of next nearest alarm//
@@ -185,6 +185,6 @@ bool fetch_nearest_alarm_timestamp(time_t *nearest_alarm_timestamp){ // get the 
         ESP_LOGE(TAG_fetch_nearest_alarm, "No alarm defined");
         return false;
     }
-    ESP_LOGI(TAG_fetch_nearest_alarm, "NEAREST ALARM ON %d:%d, %d days from today", alarm_tm.tm_hour, alarm_tm.tm_min, day_offset);
+    ESP_LOGI(TAG_fetch_nearest_alarm, "NEAREST ALARM ON %02d:%02d, %d days from today", alarm_tm.tm_hour, alarm_tm.tm_min, day_offset);
     return true;
 }

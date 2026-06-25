@@ -44,6 +44,7 @@ int app_log_vprintf(const char *fmt, va_list args);
 void usb_log_task(void *arg);
 
 void setup_usb_from_example();
+void flush_usb_logs();
 void uninstall_usb();
 
 #endif 

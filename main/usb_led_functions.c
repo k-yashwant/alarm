@@ -113,12 +113,26 @@ void setup_usb_from_example() {
     ESP_LOGI("MAIN", "USB initialization DONE");
 }
 
+void flush_usb_logs() {
+    if (log_queue) {
+        int retries = 0;
+        // Wait up to 200ms (20 * 10ms) for the log queue to be processed by usb_log_task
+        while (uxQueueMessagesWaiting(log_queue) > 0 && retries < 20) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+            retries++;
+        }
+    }
+    // Flush the TinyUSB hardware buffer
+    tinyusb_cdcacm_write_flush(TINYUSB_CDC_ACM_0, pdMS_TO_TICKS(50));
+    vTaskDelay(pdMS_TO_TICKS(50));
+}
+
 void uninstall_usb() {
     if (s_usb_installed) {
+        flush_usb_logs();
         tinyusb_cdcacm_deinit(TINYUSB_CDC_ACM_0);
         tinyusb_driver_uninstall();
         s_usb_installed = false;
-        ESP_LOGI("MAIN", "USB driver uninstalled");
     }
 }
 

@@ -97,9 +97,6 @@ void app_main(void)
                 double sleep_time = trigger_time - MIN_LIGHT_SLEEP_TIME_SEC;
                 ESP_LOGI(TAG, "Light sleeping for %lf seconds (waking up %lf seconds early)", sleep_time, MIN_LIGHT_SLEEP_TIME_SEC);
                 esp_sleep_enable_timer_wakeup((uint64_t) sleep_time * 1000000LL);
-                fflush(stdout);
-                tinyusb_cdcacm_write_flush(TINYUSB_CDC_ACM_0, pdMS_TO_TICKS(100));
-                vTaskDelay(pdMS_TO_TICKS(50));
                 uninstall_usb();             
                 esp_light_sleep_start();
                 vTaskDelay(pdMS_TO_TICKS(50));
