@@ -9,6 +9,7 @@
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32s2"
   },
-  "idf.port": "/dev/tty.usbmodem1101",
-  "idf.currentSetup": "/Users/yashwantkotikala/.espressif/v5.5.2/esp-idf"
+  "idf.port": "/dev/tty.usbmodem1234561",
+  "idf.currentSetup": "/Users/yashwantkotikala/.espressif/v5.5.2/esp-idf",
+  "idf.flashType": "UART"
 }

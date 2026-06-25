@@ -1,3 +1,5 @@
+//
+
 
 #include <string.h>
 #include "esp_wifi.h"
@@ -23,7 +25,8 @@
 
 
 
-
+#define HOME_WIFI_SSID "your_wifi_ssid"
+#define HOME_WIFI_PASSWORD "your_wifi_password"
 
 #define campus_username "your_campus_username"
 #define campus_password "your_campus_password"
@@ -61,7 +64,7 @@ const char *firebase_root_cert = \
 "bP6MvPJwNQzcmRk13NfIRmPVNnGuV/u3gm3c\n" \
 "-----END CERTIFICATE-----\n";
 
-#define WIFI_SSID "CAMPUS_SECURED"
+#define CAMPUS_WIFI_SSID "CAMPUS_SECURED"
 #define EAP_METHOD ESP_EAP_TYPE_PEAP
 
 
@@ -76,6 +79,8 @@ static const char *TAG = "Wifi_Functions";
 static bool wifi_ip = false;
 EventGroupHandle_t s_wifi_event_group;
 static bool is_wifi_initialized = false;
+#define MAX_WIFI_RETRIES 5
+static int s_retry_num = 0;
 
 
 static void event_handler(void* arg, esp_event_base_t event_base,
@@ -83,18 +88,23 @@ static void event_handler(void* arg, esp_event_base_t event_base,
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         ESP_LOGI(TAG, "WiFi Started, connecting...");
+        s_retry_num = 0;
         esp_wifi_connect();
     } 
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-        ESP_LOGI(TAG, "Disconnected. Retrying...");
-        
         // 1. Clear the bit! This tells sync_time (and other tasks) we are offline
         xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
         
         // 2. IMPORTANT: Update your boolean too
         wifi_ip = false; 
         
-        esp_wifi_connect();
+        if (s_retry_num < MAX_WIFI_RETRIES) {
+            ESP_LOGI(TAG, "Disconnected. Retrying (%d/%d)...", s_retry_num + 1, MAX_WIFI_RETRIES);
+            esp_wifi_connect();
+            s_retry_num++;
+        } else {
+            ESP_LOGE(TAG, "Max retries (%d) reached. Failed to connect to WiFi.", MAX_WIFI_RETRIES);
+        }
     } 
     else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
@@ -106,6 +116,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,
         // 2. Set the Event Bit! 
         // This effectively "signals" the sync_time function to wake up immediately.
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+        s_retry_num = 0;
     }
 }
 
@@ -139,7 +150,7 @@ void connect_campus_wifi(){
 
     wifi_config_t wifi_config = {
         .sta = {
-            .ssid = WIFI_SSID,
+            .ssid = CAMPUS_WIFI_SSID,
             // Password in wifi_config_t is ignored for Enterprise, 
             // but we leave pmf settings to standard
             .pmf_cfg = {
@@ -162,6 +173,65 @@ void connect_campus_wifi(){
     ESP_LOGI(TAG, "Starting WiFi...");
     ESP_ERROR_CHECK(esp_wifi_start());
     is_wifi_initialized = true; 
+}
+
+void connect_home_wifi(){
+
+    if (is_wifi_initialized){
+        ESP_LOGI(TAG, "Wifi Already Initialised");
+        return;
+    }
+    ESP_LOGI(TAG, "Creating wifi event group");
+    s_wifi_event_group = xEventGroupCreate();
+    ESP_ERROR_CHECK(esp_netif_init());
+
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+
+    ESP_LOGI(TAG, "Creating Default Loop");
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    esp_netif_create_default_wifi_sta();
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL));
+
+    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
+
+    wifi_config_t wifi_config = {
+    .sta = {
+        .ssid = HOME_WIFI_SSID,
+        .password = HOME_WIFI_PASSWORD,   // <-- Required for WPA2-Personal
+        .threshold.authmode = WIFI_AUTH_WPA2_PSK,  // Optional but recommended
+        .pmf_cfg = {
+            .capable = true,
+            .required = false
+        },
+    }
+};
+
+    ESP_LOGI(TAG, "Setting WiFi configuration...");
+
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
+
+    ESP_LOGI(TAG, "Starting WiFi...");
+    ESP_ERROR_CHECK(esp_wifi_start());
+
+    is_wifi_initialized = true;
+}
+
+void connect_wifi(int option){
+    if (option == 0){
+        connect_campus_wifi();
+    }else if (option == 1){
+        connect_home_wifi();
+    }
 }
 
 static void time_sync_cb(struct timeval *tv)
@@ -192,6 +262,9 @@ void sync_time(void)
             ESP_LOGI(TAG, "SNTP already initialized.");
             return;
         }
+
+        // Clear the time synced event bit so we can wait for the new sync callback
+        xEventGroupClearBits(s_wifi_event_group, TIME_SYNCED_BIT);
 
         setenv("TZ", "IST-5:30", 1);
         tzset();
@@ -225,7 +298,7 @@ void parse_alarm_json(void) {
     // pdFALSE = Don't clear the bit after exit (keep us known as connected)
     // pdTRUE = Wait for all bits (doesn't matter here as we only look for one)
     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
-        WIFI_CONNECTED_BIT,
+        WIFI_CONNECTED_BIT | TIME_SYNCED_BIT,
         pdFALSE,
         pdTRUE,
         pdMS_TO_TICKS(10000)); // 10 Second Timeout
@@ -261,8 +334,8 @@ void parse_alarm_json(void) {
         // 4. Fetch Headers (Determine content length)
         int content_length = esp_http_client_fetch_headers(client);
 
-        
         // Safety check: Is data too big for our static buffer?
+        // Only check if content_length is positive/known.
         if (content_length >= BUFFER_SIZE) {
             ESP_LOGE(TAG, "Error: JSON too large (%d bytes) for buffer (%d bytes)\n", content_length, BUFFER_SIZE);
             esp_http_client_cleanup(client);
@@ -273,13 +346,28 @@ void parse_alarm_json(void) {
         int total_read_len = 0;
         int read_len = 0;
 
-        // Loop until we read everything or buffer is full
-        while (total_read_len < content_length && total_read_len < BUFFER_SIZE) {
-            read_len = esp_http_client_read(client, rx_buffer + total_read_len, content_length - total_read_len);
-            if (read_len <= 0) {
-                break; // Error or Done
+        // Loop until we read everything or buffer is full (leave 1 byte for null terminator)
+        while (total_read_len < BUFFER_SIZE) {
+            int read_target = BUFFER_SIZE - total_read_len;
+            if (content_length > 0 && (content_length - total_read_len) < read_target) {
+                read_target = content_length - total_read_len;
+            }
+
+            read_len = esp_http_client_read(client, rx_buffer + total_read_len, read_target);
+            if (read_len < 0) {
+                ESP_LOGE(TAG, "Error reading from HTTP client: %d", read_len);
+                break;
+            }
+            if (read_len == 0) {
+                // Connection closed or EOF
+                break;
             }
             total_read_len += read_len;
+
+            // If we know the content length and have read it all, we can stop
+            if (content_length > 0 && total_read_len >= content_length) {
+                break;
+            }
         }
         
         // Null-terminate the string so cJSON can read it

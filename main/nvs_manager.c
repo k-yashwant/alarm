@@ -97,7 +97,7 @@ alarm_epoch_t trigger_time_remaining(alarm_entry_t *candidate, current_time_t *c
     uint32_t diff_time = UINT32_MAX;
     int day_offset=0;
 
-    for (day_offset=0; day_offset<7; day_offset++){     
+    for (day_offset=0; day_offset<=7; day_offset++){     
         ESP_LOGI(TAG_trigger_time_remaining, "%d and %d", candidate->days, check_day_mask);
         if (candidate->days & check_day_mask){
             if (day_offset == 0){ // alarm scheduled for current day

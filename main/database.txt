@@ -1,6 +1,0 @@
-api_secret= YKNg7x06okicUosL1RcS7cccBtP4h6l5iPQ50kDn
-uid= alarm-scheduler-webpage
-project_id= alarm-scheduler-webpage
-https://alarm-scheduler-webpage-default-rtdb.asia-southeast1.firebasedatabase.app/users/alarm-scheduler-webpage/alarms.json?auth=YKNg7x06okicUosL1RcS7cccBtP4h6l5iPQ50kDn
-
-https://alarm-scheduler-webpage-default-rtdb.asia-southeast1.firebasedatabase.app/users/CquQEV5STZbTEd7OglH1SyUdYGB2.json?auth=PdT6EgfNCzxJJptRRO06zt6Bpred8EiMMQd0hyJH

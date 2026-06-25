@@ -1,0 +1,1 @@
+- added 1000ms time delay after (less than 300s for trigger -> light sleep for some time -> wake up from light sleep -> tinyusb is initialized )

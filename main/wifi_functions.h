@@ -5,6 +5,8 @@
 #include "alarm_storage_structures.h"
 
 void connect_campus_wifi();
+void connect_home_wifi();
+void connect_wifi(int option);
 
 void sync_time();
 

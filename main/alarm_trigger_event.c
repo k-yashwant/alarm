@@ -8,8 +8,6 @@
 
 #define ALARM_PIN           33
 
-
-
 #define BEEP_DURATION_1     400  // ms ON
 #define BEEP_INTERVAL_1     700  // ms OFF
 
@@ -23,6 +21,10 @@
 
 #define BUZZER_ON           0
 #define BUZZER_OFF          1
+
+#define VIBRATION_PIN       32   // Change to your desired GPIO pin for the vibration motor
+#define VIBRATION_ON        1    // Typically 1 (HIGH) turns on the transistor/switch
+#define VIBRATION_OFF       0    // 0 (LOW) turns off the transistor/switch
 
 #define SNOOZE_MINUTES      0.1
 
@@ -40,6 +42,7 @@ volatile bool keep_running = true;
 static TimerHandle_t snooze_timer;
 
 void snooze_timer_cb(TimerHandle_t xTimer)
+
 {
     ESP_LOGI(TAG, "Snooze complete");
     // wake alarm again
@@ -95,97 +98,127 @@ void Button_Init(){
 
 
 // ------------------------------------------------------------------------
-// 2. THE BUZZER FUNCTION (TASK)
+// 2. THE BUZZER & VIBRATION FUNCTION (TASK)
 // ------------------------------------------------------------------------
 void buzzer_pattern_task(void* arg){
 
     // Configure the Buzzer Pin
     gpio_reset_pin(ALARM_PIN);
     gpio_set_direction(ALARM_PIN, GPIO_MODE_OUTPUT);
-    gpio_set_level(ALARM_PIN, BUZZER_OFF); 
+    gpio_set_level(ALARM_PIN, BUZZER_OFF);
 
-    //Configure Push Button
+    // Configure the Vibration Motor Pin
+    gpio_reset_pin(VIBRATION_PIN);
+    gpio_set_direction(VIBRATION_PIN, GPIO_MODE_OUTPUT);
+    gpio_set_level(VIBRATION_PIN, VIBRATION_OFF);
+    // Note: Button ISR already registered at boot via Button_Init() in main.c
 
-    Button_Init();
-
-    ESP_LOGI(TAG, "Alarm Started!. Press Button to Snooze or enter the code in serial");
-
+    // --- PHASE 1: Initial alarm — button snoozed, serial dismisses ---
+    ESP_LOGI(TAG, "Alarm! Press button to snooze once, or type the stop message to dismiss.");
     while (keep_running) {
-
         gpio_set_level(ALARM_PIN, BUZZER_ON);
-
-        // // Wait Duration OR Button Press
+        gpio_set_level(VIBRATION_PIN, VIBRATION_ON);
         if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(BEEP_DURATION_1)) > 0) {
-            break;
+            break;  // woken by button press OR serial input
         }
-        
         gpio_set_level(ALARM_PIN, BUZZER_OFF);
-        
-        // Wait for BEEP_INTERVAL. Check for button press again.
+        gpio_set_level(VIBRATION_PIN, VIBRATION_OFF);
         if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(BEEP_INTERVAL_1)) > 0) {
             break;
         }
     }
-
-        gpio_set_level(ALARM_PIN, BUZZER_OFF);
-        xTaskNotifyStateClear(NULL);
-    
-    gpio_reset_pin(ALARM_PIN);
-    gpio_set_direction(ALARM_PIN, GPIO_MODE_OUTPUT);
     gpio_set_level(ALARM_PIN, BUZZER_OFF);
-    ESP_LOGI(TAG, "You have chosen to snooze for sometime");
-    for(int i = 0; i < (SNOOZE_MINUTES * 60); i++) {
-        if(!keep_running) break; 
-        vTaskDelay(pdMS_TO_TICKS(1000)); // Wait 1 second
+    gpio_set_level(VIBRATION_PIN, VIBRATION_OFF);
+
+    // If serial dismissed during phase 1, skip snooze entirely
+    if (!keep_running) goto cleanup;
+
+    // --- SNOOZE PHASE ---
+    xTaskNotifyStateClear(NULL);  // flush any extra notifications
+    ESP_LOGI(TAG, "Snoozed for %.1f minutes. No more snoozes after this.", SNOOZE_MINUTES);
+    for (int i = 0; i < (int)(SNOOZE_MINUTES * 60); i++) {
+        if (!keep_running) goto cleanup;  // serial dismissed during snooze
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 
-    while(keep_running) {
-        // --- STATE: ON ---
-        gpio_set_level(ALARM_PIN, 0);
-        vTaskDelay(pdMS_TO_TICKS(BEEP_DURATION_2));
-
-        // --- STATE: OFF ---
-        gpio_set_level(ALARM_PIN, 1);
-        vTaskDelay(pdMS_TO_TICKS(BEEP_INTERVAL_2));
+    // --- PHASE 2: Post-snooze — only serial can stop it, button is ignored ---
+    xTaskNotifyStateClear(NULL);  // flush button presses that came in during snooze
+    ESP_LOGI(TAG, "Snooze over! You must type the stop message to dismiss.");
+    while (keep_running) {
+        gpio_set_level(ALARM_PIN, BUZZER_ON);
+        gpio_set_level(VIBRATION_PIN, VIBRATION_ON);
+        if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(BEEP_DURATION_2)) > 0) {
+            if (!keep_running) break;   // serial set keep_running=false → stop
+            // button press during phase 2 → ignore, keep beeping (no more snooze)
+        }
+        gpio_set_level(ALARM_PIN, BUZZER_OFF);
+        gpio_set_level(VIBRATION_PIN, VIBRATION_OFF);
+        if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(BEEP_INTERVAL_2)) > 0) {
+            if (!keep_running) break;   // serial dismissed → stop
+        }
     }
 
-
+cleanup:
     // --- CLEANUP ---
-    // Ensure buzzer is definitively OFF before quitting
-    gpio_set_level(ALARM_PIN, 1);
-    ESP_LOGI(TAG, "Buzzer stopped by input.\n");
-    if (xBuzzerTaskHandle != NULL){
-        vTaskDelete(xBuzzerTaskHandle); 
-        xBuzzerTaskHandle = NULL; // Prevent ISR from notifying a dead task
-    }
+    gpio_set_level(ALARM_PIN, BUZZER_OFF);
+    gpio_set_level(VIBRATION_PIN, VIBRATION_OFF);
+    ESP_LOGI(TAG, "Alarm dismissed.");
     is_alarm_active = false;
+    xBuzzerTaskHandle = NULL;  // clear BEFORE deleting so ISR won't notify a dead task
+    vTaskDelete(NULL);         // delete self (NULL = calling task)
 }
 
 void TriggerAlarm(){
+    keep_running = true;   // Reset so buzzer task runs fresh on every alarm
     is_alarm_active = true;
     xTaskCreate(buzzer_pattern_task, "buzzer_task", 4096, NULL, 5, &xBuzzerTaskHandle);
     
-    char rx_buffer[128];
+    char line_buffer[64];
+    int line_pos = 0;
+
     ESP_LOGI(TAG, "Enter you message here:");
 
     while (true){
-        char *line = fgets(rx_buffer, sizeof(rx_buffer), stdin);
+        char c;
 
-        if (line != NULL){
-            line[strcspn(line, "\r\n")] = 0;
+        if (xQueueReceive(input_queue, &c, pdMS_TO_TICKS(50)) == pdTRUE) {
             
-            if (strcmp(line, STOP_MESSAGE) == 0){
-                ESP_LOGI(TAG, "Stopping the Alarm! Good Morning.\n Hope you have a great day!!!");
-                keep_running = false;
-                if(xBuzzerTaskHandle != NULL) xTaskNotifyGive(xBuzzerTaskHandle);
-                break;
+            // Echo back to user (optional, so they see what they type)
+            // log_msg_t not available here, simple printf works now via our hook
+            // printf("%c", c); 
+
+            // Handle Backspace (127 or 8)
+            if ((c == 127 || c == 8) && line_pos > 0) {
+                line_pos--;
+                continue;
             }
-            else{
-            ESP_LOGI(TAG, "Unknown command!");
+
+            // Handle Newline (End of command)
+            if (c == '\n' || c == '\r') {
+                line_buffer[line_pos] = 0; // Null terminate
+                
+                // Only process if we have data
+                if (line_pos > 0) {
+                    ESP_LOGI("ALARM", "Received: %s", line_buffer);
+
+                    if (strcmp(line_buffer, STOP_MESSAGE) == 0) {
+                        ESP_LOGI("ALARM", "Stopping the Alarm! Good Morning.");
+                        keep_running = false;
+                        if(xBuzzerTaskHandle != NULL) xTaskNotifyGive(xBuzzerTaskHandle);
+                        break;
+                    } else {
+                        ESP_LOGI("ALARM", "Incorrect command.");
+                    }
+                }
+                
+                line_pos = 0; // Reset buffer
+            } 
+            else if (line_pos < sizeof(line_buffer) - 1) {
+                // Add char to buffer
+                line_buffer[line_pos++] = c;
             }
         }
-
-        vTaskDelay(pdMS_TO_TICKS(100));
+        
     }
     gpio_reset_pin(ALARM_PIN);
     ESP_LOGI(TAG, "Finished Alarm Trigger.");
