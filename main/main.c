@@ -17,6 +17,7 @@
 #include "alarm_trigger_event.h"
 #include "wifi_functions.h"
 #include "nvs_manager.h"
+#include "oled_display.h"
 
 
 RTC_DATA_ATTR uint8_t caliberate_status=0;
@@ -56,6 +57,9 @@ void app_main(void)
 {
     init_serial_tinyusb();
     Button_Init();
+    if (oled_display_init() != ESP_OK) {
+        ESP_LOGE(TAG, "OLED initialization failed");
+    }
     
     
 
@@ -87,6 +91,7 @@ void app_main(void)
     }
     
     time(&now);
+    oled_display_show_time(now);
    trigger_time = difftime(nearest_alarm_timestamp, now);
 
     while(1){
@@ -97,10 +102,12 @@ void app_main(void)
                 double sleep_time = trigger_time - MIN_LIGHT_SLEEP_TIME_SEC;
                 ESP_LOGI(TAG, "Light sleeping for %lf seconds (waking up %lf seconds early)", sleep_time, MIN_LIGHT_SLEEP_TIME_SEC);
                 esp_sleep_enable_timer_wakeup((uint64_t) sleep_time * 1000000LL);
+                oled_display_off();
                 uninstall_usb();             
                 esp_light_sleep_start();
                 vTaskDelay(pdMS_TO_TICKS(50));
                 setup_usb_from_example();
+                oled_display_on();
                 ESP_LOGI(TAG, "Waiting %lf seconds with active USB before alarm...", MIN_LIGHT_SLEEP_TIME_SEC);
                 vTaskDelay(pdMS_TO_TICKS(MIN_LIGHT_SLEEP_TIME_SEC * 1000));
             } else if (trigger_time > 0.0) {
@@ -108,6 +115,7 @@ void app_main(void)
                 vTaskDelay(pdMS_TO_TICKS(trigger_time * 1000));
             }
             is_alarm_active = true;
+            oled_display_set_alarm_active(true);
             setup_usb_from_example();
             vTaskDelay(pdMS_TO_TICKS(1000));
             ESP_LOGI(TAG, "Triggering Alarm now");
@@ -116,6 +124,7 @@ void app_main(void)
 
             ESP_LOGI(TAG, "Successfully executed last alarm");
             is_alarm_active=false;
+            oled_display_set_alarm_active(false);
             caliberate_status=0;
             connect_wifi(WIFI_OPTION);
             sync_time();
@@ -164,6 +173,7 @@ void app_main(void)
             esp_sleep_enable_timer_wakeup((uint64_t) (trigger_time - DEEP_SLEEP_BUFFER_SEC) * 1000000LL);
             immediate_trigger = 1;
         }
+        oled_display_off();
         esp_sleep_enable_ext1_wakeup(GPIO_INPUT_PIN_SEL, ESP_EXT1_WAKEUP_ANY_HIGH);
         esp_deep_sleep_start();
     }
