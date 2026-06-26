@@ -345,15 +345,16 @@ void oled_display_show_time(time_t now)
     strftime(time_text, sizeof(time_text), "%H:%M:%S", &timeinfo);
 
     int bat_pct = get_battery_percentage();
-    char bat_text[32];
+    char bat_text[16];
     if (bat_pct >= 0) {
-        snprintf(bat_text, sizeof(bat_text), "BAT: %d%%", bat_pct);
+        snprintf(bat_text, sizeof(bat_text), "%d%%", bat_pct);
     } else {
-        snprintf(bat_text, sizeof(bat_text), "BAT: ---");
+        snprintf(bat_text, sizeof(bat_text), "---");
     }
+    int bat_x = 127 - (strlen(bat_text) * 6) - 2;
 
     memset(s_framebuffer, 0, sizeof(s_framebuffer));
-    oled_draw_text(40, 4, bat_text, 1);
+    oled_draw_text(bat_x, 4, bat_text, 1);
     oled_draw_text(16, 25, time_text, 2);
     oled_flush();
 }
