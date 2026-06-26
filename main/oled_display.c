@@ -35,6 +35,7 @@ static TaskHandle_t s_time_task_handle;
 static bool s_initialized;
 static bool s_powered;
 static bool s_alarm_active;
+static time_t s_next_alarm_time;
 static uint8_t s_framebuffer[OLED_H_RES * OLED_V_RES / 8];
 
 static const uint8_t s_font_5x7[][5] = {
@@ -186,10 +187,12 @@ int read_battery_percentage(void) {
 
     // Skip ADC2 read if WiFi is active — ADC2 is shared with the WiFi hardware.
     // Reading during WiFi operation will panic the chip.
-    EventBits_t bits = xEventGroupGetBits(s_wifi_event_group);
-    if (bits & WIFI_CONNECTED_BIT) {
-        ESP_LOGD(TAG, "WiFi active, skipping ADC2 battery read");
-        return s_cached_battery_percentage; // return last known value
+    if (s_wifi_event_group != NULL) {
+        EventBits_t bits = xEventGroupGetBits(s_wifi_event_group);
+        if (bits & WIFI_CONNECTED_BIT) {
+            ESP_LOGD(TAG, "WiFi active, skipping ADC2 battery read");
+            return s_cached_battery_percentage; // return last known value
+        }
     }
 
     // 1. Turn ON the voltage divider circuit
@@ -341,6 +344,12 @@ void oled_display_set_alarm_active(bool active)
     oled_display_show_time(time(NULL));
 }
 
+void oled_display_set_next_alarm(time_t alarm_time)
+{
+    s_next_alarm_time = alarm_time;
+    oled_display_show_time(time(NULL));
+}
+
 void oled_display_show_time(time_t now)
 {
     if (!s_initialized || !s_powered) {
@@ -360,10 +369,20 @@ void oled_display_show_time(time_t now)
     } else {
         snprintf(bat_text, sizeof(bat_text), "---");
     }
-    int bat_x = 127 - (strlen(bat_text) * 6) - 2;
+
+    char next_alarm_text[8] = "";
+    if (s_next_alarm_time > 0) {
+        struct tm alarm_timeinfo;
+        localtime_r(&s_next_alarm_time, &alarm_timeinfo);
+        strftime(next_alarm_text, sizeof(next_alarm_text), "%H:%M", &alarm_timeinfo);
+    }
+    int next_alarm_x = 127 - (strlen(next_alarm_text) * 6) - 2;
 
     memset(s_framebuffer, 0, sizeof(s_framebuffer));
-    oled_draw_text(bat_x, 4, bat_text, 1);
+    oled_draw_text(2, 4, bat_text, 1);
+    if (next_alarm_text[0] != '\0') {
+        oled_draw_text(next_alarm_x, 4, next_alarm_text, 1);
+    }
     oled_draw_text(16, 25, time_text, 2);
     oled_flush();
 }

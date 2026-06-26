@@ -1,0 +1,11 @@
+# Use 4MB flash (board has 8MB, 4MB is conservative and well-supported)
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
+# Use custom partition table with 2MB app partition
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# Optimize Mbed TLS memory footprint to prevent out-of-memory (0x4290) during handshakes
+CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
+CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN=8192
+

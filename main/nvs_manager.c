@@ -147,7 +147,9 @@ bool fetch_nearest_alarm_timestamp(time_t *nearest_alarm_timestamp){ // get the 
     time_t now_ts;
     time(&now_ts);
     struct tm alarm_tm = *localtime(&now_ts); 
-    ESP_LOGI(TAG, "CURRENT_TIME: %d:%d:%d", alarm_tm.tm_hour, alarm_tm.tm_min, alarm_tm.tm_sec);
+    char time_str[64];
+    strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", &alarm_tm);
+    ESP_LOGI(TAG, "CURRENT_TIME: %s", time_str);
 
     current_time_t current_time; //to pass on to trigger_time_remaining funcition
     current_time.day_bitmask = 1 << (alarm_tm.tm_wday + 6) % 7;

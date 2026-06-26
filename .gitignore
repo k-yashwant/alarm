@@ -12,6 +12,8 @@
 *.swo
 *.bak
 *.tmp
+.env
+main/firebase_secrets.h
 
 # Log files
 *.log

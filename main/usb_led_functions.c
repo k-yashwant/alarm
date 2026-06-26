@@ -17,42 +17,44 @@ static bool s_usb_installed = false;
 static void blink_led(void);
 static void configure_led(void);
 
-void init_serial_tinyusb(){
-     // 1. Setup Queues
+void init_serial_tinyusb(bool fast_boot)
+{
     log_queue = xQueueCreate(LOG_QUEUE_SIZE, sizeof(log_msg_t));
-    input_queue = xQueueCreate(INPUT_QUEUE_SIZE, sizeof(char)); 
-    
-    
-    // 2. Start the USB Handler Task
+    input_queue = xQueueCreate(INPUT_QUEUE_SIZE, sizeof(char));
+
     xTaskCreate(usb_log_task, "usb_log", 4096, NULL, 1, NULL);
 
-    // 3. Redirect ESP_LOG system to our Queue
     esp_log_level_set("*", ESP_LOG_INFO);
     esp_log_set_vprintf(app_log_vprintf);
-    configure_led();
-    blink_led();
-
     xMainTaskHandle = xTaskGetCurrentTaskHandle();
-    
+
     setup_usb_from_example();
+
+    configure_led();
+    if (!fast_boot) {
+        blink_led();
+    }
 }
 
 
-// This function fires AUTOMATICALLY when you type on the laptop
+// Called from the TinyUSB task when host sends serial data (not ISR context).
 void tinyusb_cdc_rx_callback(int itf, cdcacm_event_t *event)
 {
-    /* initialization */
-    size_t rx_size = 0;
-
-    /* Read from USB Hardware */
-    esp_err_t ret = tinyusb_cdcacm_read(itf, rx_buf, sizeof(rx_buf), &rx_size);
-    
-    if (ret == ESP_OK) {
-        // Push every character into our Input Queue
-        for(int i=0; i < rx_size; i++) {
-            xQueueSendFromISR(input_queue, &rx_buf[i], NULL);
-        }
+    if (input_queue == NULL) {
+        return;
     }
+
+    size_t rx_size = 0;
+    do {
+        esp_err_t ret = tinyusb_cdcacm_read(itf, rx_buf, sizeof(rx_buf) - 1, &rx_size);
+        if (ret != ESP_OK || rx_size == 0) {
+            break;
+        }
+
+        for (size_t i = 0; i < rx_size; i++) {
+            xQueueSend(input_queue, &rx_buf[i], 0);
+        }
+    } while (rx_size == sizeof(rx_buf) - 1);
 }
 
 // 1. THE INTERCEPTOR (Sends ESP_LOG data to Queue)

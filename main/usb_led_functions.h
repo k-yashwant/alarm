@@ -35,7 +35,7 @@ typedef struct {
 } log_msg_t;
 
 
-void init_serial_tinyusb();
+void init_serial_tinyusb(bool fast_boot);
 
 void tinyusb_cdc_rx_callback(int itf, cdcacm_event_t *event);
 
