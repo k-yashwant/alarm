@@ -14,6 +14,7 @@
 #include "esp_adc/adc_oneshot.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
+#include "system_events.h"
 
 static const char *TAG = "OLED_DISPLAY";
 
@@ -181,6 +182,14 @@ static void init_battery_adc(void) {
 int read_battery_percentage(void) {
     if (!s_adc_initialized) {
         return -1;
+    }
+
+    // Skip ADC2 read if WiFi is active — ADC2 is shared with the WiFi hardware.
+    // Reading during WiFi operation will panic the chip.
+    EventBits_t bits = xEventGroupGetBits(s_wifi_event_group);
+    if (bits & WIFI_CONNECTED_BIT) {
+        ESP_LOGD(TAG, "WiFi active, skipping ADC2 battery read");
+        return s_cached_battery_percentage; // return last known value
     }
 
     // 1. Turn ON the voltage divider circuit
