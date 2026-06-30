@@ -13,10 +13,10 @@ extern TaskHandle_t xMainTaskHandle;
 extern TaskHandle_t xBuzzerTaskHandle;
 void gpio_isr_handler(void* arg);
 void Button_Init();
-// This tells other files that TriggerAlarm exists
+
 void TriggerAlarm();
 extern volatile bool is_alarm_active;
-extern QueueHandle_t input_queue; // Access the queue from main.c
+extern QueueHandle_t input_queue; 
 
 
 

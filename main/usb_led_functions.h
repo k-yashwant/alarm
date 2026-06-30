@@ -4,9 +4,9 @@
 #include "esp_log.h"
 
 
-#include "led_strip.h" // Assuming this is needed for your LED
+#include "led_strip.h" 
 
-// Placeholder for your LED functions (Add your implementation back)
+
 extern uint8_t s_led_state;
 
 extern led_strip_handle_t led_strip;
@@ -14,7 +14,6 @@ extern led_strip_handle_t led_strip;
 #define BLINK_PERIOD_MS     1000
 #define BLINK_GPIO 18
 
-// --- TINYUSB INCLUDES (FROM EXAMPLE) ---
 #include "tinyusb.h"
 #include "tinyusb_default_config.h"
 #include "tinyusb_cdc_acm.h"

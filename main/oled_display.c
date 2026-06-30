@@ -27,6 +27,7 @@ static const char *TAG = "OLED_DISPLAY";
 #define OLED_CMD_BITS 8
 #define OLED_PARAM_BITS 8
 #define OLED_ROTATE_180 1
+#define CHARGE_STATUS_GPIO 3
 
 static i2c_master_bus_handle_t s_i2c_bus;
 static esp_lcd_panel_io_handle_t s_io_handle;
@@ -40,10 +41,21 @@ static uint8_t s_framebuffer[OLED_H_RES * OLED_V_RES / 8];
 
 static const uint8_t s_font_5x7[][5] = {
     [' '] = {0x00, 0x00, 0x00, 0x00, 0x00},
+    ['!'] = {0x00, 0x00, 0x5f, 0x00, 0x00},
+    ['"'] = {0x00, 0x07, 0x00, 0x07, 0x00},
+    ['#'] = {0x14, 0x7f, 0x14, 0x7f, 0x14},
+    ['$'] = {0x24, 0x2a, 0x7f, 0x2a, 0x12},
+    ['%'] = {0x23, 0x13, 0x08, 0x64, 0x62},
+    ['&'] = {0x36, 0x49, 0x55, 0x22, 0x50},
+    ['\''] = {0x00, 0x05, 0x03, 0x00, 0x00},
+    ['('] = {0x00, 0x1c, 0x22, 0x41, 0x00},
+    [')'] = {0x00, 0x41, 0x22, 0x1c, 0x00},
+    ['*'] = {0x14, 0x08, 0x3e, 0x08, 0x14},
+    ['+'] = {0x08, 0x08, 0x3e, 0x08, 0x08},
+    [','] = {0x00, 0x50, 0x30, 0x00, 0x00},
     ['-'] = {0x08, 0x08, 0x08, 0x08, 0x08},
     ['.'] = {0x00, 0x60, 0x60, 0x00, 0x00},
-    [':'] = {0x00, 0x36, 0x36, 0x00, 0x00},
-    ['%'] = {0x23, 0x13, 0x08, 0x64, 0x62},
+    ['/'] = {0x20, 0x10, 0x08, 0x04, 0x02},
     ['0'] = {0x3e, 0x51, 0x49, 0x45, 0x3e},
     ['1'] = {0x00, 0x42, 0x7f, 0x40, 0x00},
     ['2'] = {0x42, 0x61, 0x51, 0x49, 0x46},
@@ -54,17 +66,40 @@ static const uint8_t s_font_5x7[][5] = {
     ['7'] = {0x01, 0x71, 0x09, 0x05, 0x03},
     ['8'] = {0x36, 0x49, 0x49, 0x49, 0x36},
     ['9'] = {0x06, 0x49, 0x49, 0x29, 0x1e},
+    [':'] = {0x00, 0x36, 0x36, 0x00, 0x00},
+    [';'] = {0x00, 0x56, 0x36, 0x00, 0x00},
+    ['<'] = {0x08, 0x14, 0x22, 0x41, 0x00},
+    ['='] = {0x24, 0x24, 0x24, 0x24, 0x24},
+    ['>'] = {0x00, 0x41, 0x22, 0x14, 0x08},
+    ['?'] = {0x02, 0x01, 0x51, 0x09, 0x06},
+    ['@'] = {0x32, 0x49, 0x79, 0x41, 0x3e},
     ['A'] = {0x7e, 0x11, 0x11, 0x11, 0x7e},
     ['B'] = {0x7f, 0x49, 0x49, 0x49, 0x36},
+    ['C'] = {0x3e, 0x41, 0x41, 0x41, 0x22},
+    ['D'] = {0x7f, 0x41, 0x41, 0x22, 0x1c},
     ['E'] = {0x7f, 0x49, 0x49, 0x49, 0x41},
+    ['F'] = {0x7f, 0x09, 0x09, 0x09, 0x01},
+    ['G'] = {0x3e, 0x41, 0x49, 0x49, 0x7a},
+    ['H'] = {0x7f, 0x08, 0x08, 0x08, 0x7f},
+    ['I'] = {0x00, 0x41, 0x7f, 0x41, 0x00},
+    ['J'] = {0x20, 0x40, 0x41, 0x3f, 0x01},
     ['K'] = {0x7f, 0x08, 0x14, 0x22, 0x41},
     ['L'] = {0x7f, 0x40, 0x40, 0x40, 0x40},
     ['M'] = {0x7f, 0x02, 0x0c, 0x02, 0x7f},
+    ['N'] = {0x7f, 0x04, 0x08, 0x10, 0x7f},
+    ['O'] = {0x3e, 0x41, 0x41, 0x41, 0x3e},
     ['P'] = {0x7f, 0x09, 0x09, 0x09, 0x06},
+    ['Q'] = {0x3e, 0x41, 0x51, 0x21, 0x5e},
     ['R'] = {0x7f, 0x09, 0x19, 0x29, 0x46},
+    ['S'] = {0x46, 0x49, 0x49, 0x49, 0x31},
     ['T'] = {0x01, 0x01, 0x7f, 0x01, 0x01},
+    ['U'] = {0x3f, 0x40, 0x40, 0x40, 0x3f},
     ['V'] = {0x1f, 0x20, 0x40, 0x20, 0x1f},
     ['W'] = {0x7f, 0x20, 0x18, 0x20, 0x7f},
+    ['X'] = {0x63, 0x14, 0x08, 0x14, 0x63},
+    ['Y'] = {0x07, 0x08, 0x70, 0x08, 0x07},
+    ['Z'] = {0x61, 0x51, 0x49, 0x45, 0x43},
+    ['~'] = {0x0c, 0x0e, 0x1b, 0x38, 0x70}, // Lightning bolt (thunder symbol)
 };
 
 static void oled_set_pixel(int x, int y, bool on)
@@ -87,9 +122,25 @@ static void oled_set_pixel(int x, int y, bool on)
     }
 }
 
+static void string_to_upper(char *str)
+{
+    while (*str) {
+        if (*str >= 'a' && *str <= 'z') {
+            *str = *str - 'a' + 'A';
+        }
+        str++;
+    }
+}
+
 static void oled_draw_char(int x, int y, char c, int scale)
 {
-    const uint8_t *glyph = s_font_5x7[(uint8_t)c];
+    uint8_t idx = (uint8_t)c;
+    size_t font_size = sizeof(s_font_5x7) / sizeof(s_font_5x7[0]);
+    if (idx >= font_size) {
+        return;
+    }
+
+    const uint8_t *glyph = s_font_5x7[idx];
 
     for (int col = 0; col < 5; col++) {
         for (int row = 0; row < 7; row++) {
@@ -233,8 +284,8 @@ int read_battery_percentage(void) {
 
     // 5. Convert to battery voltage (divider ratio: (51k + 10k) / 10k = 6.1)
     int bat_voltage_mv = (int)(voltage_mv * 6.1);
-    ESP_LOGI(TAG, "Measured battery voltage: %d.%03d V (ADC: %d mV, raw: %d)", 
-             bat_voltage_mv / 1000, bat_voltage_mv % 1000, voltage_mv, raw_val);
+    ESP_LOGI(TAG, "Measured battery voltage: %d.%03d V (ADC: %d mV, raw: %d), charging status GPIO3: %d", 
+             bat_voltage_mv / 1000, bat_voltage_mv % 1000, voltage_mv, raw_val, gpio_get_level(CHARGE_STATUS_GPIO));
 
     // 6. Map to percentage (3.4V is 0%, 4.2V is 100%)
     int percentage = (bat_voltage_mv - 3400) / 8;
@@ -306,6 +357,11 @@ esp_err_t oled_display_init(void)
 
     init_battery_adc();
 
+    // Configure GPIO 3 for battery charging status detection (active low)
+    gpio_reset_pin(CHARGE_STATUS_GPIO);
+    gpio_set_direction(CHARGE_STATUS_GPIO, GPIO_MODE_INPUT);
+    gpio_set_pull_mode(CHARGE_STATUS_GPIO, GPIO_PULLUP_ONLY);
+
     s_initialized = true;
     xTaskCreate(oled_time_task, "oled_time", 4096, NULL, 1, &s_time_task_handle);
     oled_display_show_time(time(NULL));
@@ -362,27 +418,64 @@ void oled_display_show_time(time_t now)
     char time_text[16];
     strftime(time_text, sizeof(time_text), "%H:%M:%S", &timeinfo);
 
+    // 1. Get battery percentage and charging status (from GPIO 3, active low)
     int bat_pct = get_battery_percentage();
-    char bat_text[16];
-    if (bat_pct >= 0) {
-        snprintf(bat_text, sizeof(bat_text), "%d%%", bat_pct);
-    } else {
-        snprintf(bat_text, sizeof(bat_text), "---");
+    bool is_charging = (gpio_get_level(CHARGE_STATUS_GPIO) == 0);
+
+    static bool s_last_charging_state = false;
+    if (is_charging != s_last_charging_state) {
+        ESP_LOGI(TAG, "Charging state changed: %s (GPIO3 level: %d)", 
+                 is_charging ? "CHARGING" : "NOT CHARGING", gpio_get_level(CHARGE_STATUS_GPIO));
+        s_last_charging_state = is_charging;
     }
 
-    char next_alarm_text[8] = "";
+    char bat_text[16];
+    if (bat_pct >= 0) {
+        if (is_charging) {
+            snprintf(bat_text, sizeof(bat_text), "%d%%~", bat_pct);
+        } else {
+            snprintf(bat_text, sizeof(bat_text), "%d%%", bat_pct);
+        }
+    } else {
+        if (is_charging) {
+            snprintf(bat_text, sizeof(bat_text), "---~");
+        } else {
+            snprintf(bat_text, sizeof(bat_text), "---");
+        }
+    }
+    int bat_x = 127 - (strlen(bat_text) * 6) - 8;
+
+    // 2. Format next alarm time (using 3-letter day symbol and HH:MM)
+    char next_alarm_text[16] = "";
     if (s_next_alarm_time > 0) {
         struct tm alarm_timeinfo;
         localtime_r(&s_next_alarm_time, &alarm_timeinfo);
-        strftime(next_alarm_text, sizeof(next_alarm_text), "%H:%M", &alarm_timeinfo);
+        strftime(next_alarm_text, sizeof(next_alarm_text), "%a %H:%M", &alarm_timeinfo);
+        string_to_upper(next_alarm_text);
     }
-    int next_alarm_x = 127 - (strlen(next_alarm_text) * 6) - 2;
 
+    // 3. Format current date (e.g. "MON, 28 JAN 2008")
+    char date_text[32];
+    strftime(date_text, sizeof(date_text), "%a, %d %b %Y", &timeinfo);
+    string_to_upper(date_text);
+    int date_x = (128 - (strlen(date_text) * 6)) / 2;
+
+    // 4. Render Layout
     memset(s_framebuffer, 0, sizeof(s_framebuffer));
-    oled_draw_text(2, 4, bat_text, 1);
+    
+    // Top Left: Next alarm time
     if (next_alarm_text[0] != '\0') {
-        oled_draw_text(next_alarm_x, 4, next_alarm_text, 1);
+        oled_draw_text(8, 4, next_alarm_text, 1);
     }
+    
+    // Top Right: Charge status/battery
+    oled_draw_text(bat_x, 4, bat_text, 1);
+    
+    // Middle: Current time
     oled_draw_text(16, 25, time_text, 2);
+    
+    // Bottom: Centered date
+    oled_draw_text(date_x, 53, date_text, 1);
+    
     oled_flush();
 }

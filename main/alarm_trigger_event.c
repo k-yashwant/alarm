@@ -24,16 +24,18 @@
 #define BUZZER_ON           0
 #define BUZZER_OFF          1
 
-#define VIBRATION_PIN       38   // Change to your desired GPIO pin for the vibration motor
+#define VIBRATION_PIN       38   
 #define VIBRATION_ON        1    // Typically 1 (HIGH) turns on the transistor/switch
 #define VIBRATION_OFF       0    // 0 (LOW) turns off the transistor/switch
 
-#define SNOOZE_MINUTES      0.1
+#define SNOOZE_MINUTES      10.0
+#define SERIAL_INPUT_SNOOZE_BLOCK_MS 10000
 
 static const char *TAG = "ALARM_TRIGGER_FUNCTION";
 
 TaskHandle_t xBuzzerTaskHandle = NULL;
 volatile bool keep_running = true;
+static volatile TickType_t s_last_serial_input_tick = 0;
 
 // Handle to control the buzzer task
 
@@ -73,6 +75,7 @@ static void stop_alarm_from_serial(void)
 {
     ESP_LOGI("ALARM", "Stopping the Alarm! Good Morning.");
     keep_running = false;
+    s_last_serial_input_tick = 0;
     if (xBuzzerTaskHandle != NULL) {
         xTaskNotifyGive(xBuzzerTaskHandle);
     }
@@ -104,6 +107,13 @@ void IRAM_ATTR gpio_isr_handler(void* arg)
 
     if (is_alarm_active) {
         // --- MODE 1: SNOOZE ALARM ---
+        TickType_t last_serial_input_tick = s_last_serial_input_tick;
+        if (last_serial_input_tick != 0 &&
+            (xTaskGetTickCountFromISR() - last_serial_input_tick) < pdMS_TO_TICKS(SERIAL_INPUT_SNOOZE_BLOCK_MS)) {
+            portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+            return;
+        }
+
         if(xBuzzerTaskHandle != NULL) {
             vTaskNotifyGiveFromISR(xBuzzerTaskHandle, &xHigherPriorityTaskWoken);
         }
@@ -221,15 +231,20 @@ void TriggerAlarm(){
     if (input_queue != NULL) {
         xQueueReset(input_queue);
     }
+    s_last_serial_input_tick = 0;
 
     while (true){
         char c;
 
         if (xQueueReceive(input_queue, &c, pdMS_TO_TICKS(50)) == pdTRUE) {
+            s_last_serial_input_tick = xTaskGetTickCount();
 
             // Handle Backspace (127 or 8)
             if ((c == 127 || c == 8) && line_pos > 0) {
                 line_pos--;
+                if (line_pos == 0) {
+                    s_last_serial_input_tick = 0;
+                }
                 continue;
             }
 
@@ -250,6 +265,7 @@ void TriggerAlarm(){
                 }
                 
                 line_pos = 0; // Reset buffer
+                s_last_serial_input_tick = 0;
             } 
             else if (line_pos < sizeof(line_buffer) - 1) {
                 // Add char to buffer

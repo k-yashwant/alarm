@@ -16,6 +16,7 @@
 #include "nvs_flash.h"
 #include "wifi_functions.h"
 #include "firebase_secrets.h"
+#include "wifi_secrets.h"
 #include <time.h>
 #include <stdlib.h>
 #include <sys/time.h>
@@ -34,11 +35,6 @@
 #define FIREBASE_HTTP_RX_BUFFER_SIZE 2048
 #define FIREBASE_HTTP_TX_BUFFER_SIZE 3072
 
-#define HOME_WIFI_SSID "your_wifi_ssid"
-#define HOME_WIFI_PASSWORD "your_wifi_password"
-
-#define campus_username "your_campus_username"
-#define campus_password "your_campus_password"
 const char *firebase_root_cert = \
 "-----BEGIN CERTIFICATE-----\n" \
 "MIIFVzCCAz+gAwIBAgINAgPlk28xsBNJiGuiFzANBgkqhkiG9w0BAQwFADBHMQsw\n" \

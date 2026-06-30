@@ -13,7 +13,7 @@ typedef struct {
 
 typedef struct {
     alarm_entry_t alarms[MAX_ALARMS];
-    uint8_t count;    // How many alarms are actually set
+    uint8_t count;   
 } alarm_storage_t;
 
 typedef struct {
