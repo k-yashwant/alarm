@@ -3,6 +3,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
+#include "driver/ledc.h"
 #include <string.h>
 #include "alarm_trigger_event.h"
 #include "esp_log.h"
@@ -24,14 +25,26 @@
 #define BUZZER_ON           0
 #define BUZZER_OFF          1
 
-#define VIBRATION_PIN       38   
-#define VIBRATION_ON        1    // Typically 1 (HIGH) turns on the transistor/switch
-#define VIBRATION_OFF       0    // 0 (LOW) turns off the transistor/switch
+#define VIBRATION_PIN            38   
+#define VIBRATION_PWM_CHANNEL    LEDC_CHANNEL_0
+#define VIBRATION_PWM_TIMER      LEDC_TIMER_0
+#define VIBRATION_PWM_MODE       LEDC_LOW_SPEED_MODE
+#define VIBRATION_PWM_RESOLUTION LEDC_TIMER_8_BIT
+#define VIBRATION_PWM_FREQ       1000  // 1 kHz
+#define VIBRATION_PWM_DUTY_ON    64   // ~50% duty cycle (128/256)
+#define VIBRATION_PWM_DUTY_OFF   0     // 0% duty cycle
 
 #define SNOOZE_MINUTES      10.0
 #define SERIAL_INPUT_SNOOZE_BLOCK_MS 10000
 
 static const char *TAG = "ALARM_TRIGGER_FUNCTION";
+
+static void set_vibration_active(bool active)
+{
+    uint32_t duty = active ? VIBRATION_PWM_DUTY_ON : VIBRATION_PWM_DUTY_OFF;
+    ledc_set_duty(VIBRATION_PWM_MODE, VIBRATION_PWM_CHANNEL, duty);
+    ledc_update_duty(VIBRATION_PWM_MODE, VIBRATION_PWM_CHANNEL);
+}
 
 TaskHandle_t xBuzzerTaskHandle = NULL;
 volatile bool keep_running = true;
@@ -154,10 +167,26 @@ void buzzer_pattern_task(void* arg){
     gpio_set_direction(ALARM_PIN, GPIO_MODE_OUTPUT);
     gpio_set_level(ALARM_PIN, BUZZER_OFF);
 
-    // Configure the Vibration Motor Pin
-    gpio_reset_pin(VIBRATION_PIN);
-    gpio_set_direction(VIBRATION_PIN, GPIO_MODE_OUTPUT);
-    gpio_set_level(VIBRATION_PIN, VIBRATION_OFF);
+    // Configure the Vibration Motor Pin with PWM (LEDC)
+    ledc_timer_config_t ledc_timer = {
+        .speed_mode       = VIBRATION_PWM_MODE,
+        .duty_resolution  = VIBRATION_PWM_RESOLUTION,
+        .timer_num        = VIBRATION_PWM_TIMER,
+        .freq_hz          = VIBRATION_PWM_FREQ,
+        .clk_cfg          = LEDC_AUTO_CLK
+    };
+    ledc_timer_config(&ledc_timer);
+
+    ledc_channel_config_t ledc_channel = {
+        .speed_mode     = VIBRATION_PWM_MODE,
+        .channel        = VIBRATION_PWM_CHANNEL,
+        .timer_sel      = VIBRATION_PWM_TIMER,
+        .intr_type      = LEDC_INTR_DISABLE,
+        .gpio_num       = VIBRATION_PIN,
+        .duty           = VIBRATION_PWM_DUTY_OFF,
+        .hpoint         = 0
+    };
+    ledc_channel_config(&ledc_channel);
     // Note: Button ISR already registered at boot via Button_Init() in main.c
 
     // --- PHASE 1: Initial alarm — button snoozed, serial dismisses ---
@@ -165,18 +194,18 @@ void buzzer_pattern_task(void* arg){
     ESP_LOGI(TAG, "Alarm! Press button to snooze once, or type the stop message to dismiss.");
     while (keep_running) {
         gpio_set_level(ALARM_PIN, BUZZER_ON);
-        gpio_set_level(VIBRATION_PIN, VIBRATION_ON);
+        set_vibration_active(true);
         if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(BEEP_DURATION_1)) > 0) {
             break;  // woken by button press OR serial input
         }
         gpio_set_level(ALARM_PIN, BUZZER_OFF);
-        gpio_set_level(VIBRATION_PIN, VIBRATION_OFF);
+        set_vibration_active(false);
         if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(BEEP_INTERVAL_1)) > 0) {
             break;
         }
     }
     gpio_set_level(ALARM_PIN, BUZZER_OFF);
-    gpio_set_level(VIBRATION_PIN, VIBRATION_OFF);
+    set_vibration_active(false);
 
     // If serial dismissed during phase 1, skip snooze entirely
     if (!keep_running) goto cleanup;
@@ -195,13 +224,13 @@ void buzzer_pattern_task(void* arg){
     ESP_LOGI(TAG, "Snooze over! You must type the stop message to dismiss.");
     while (keep_running) {
         gpio_set_level(ALARM_PIN, BUZZER_ON);
-        gpio_set_level(VIBRATION_PIN, VIBRATION_ON);
+        set_vibration_active(true);
         if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(BEEP_DURATION_2)) > 0) {
             if (!keep_running) break;   // serial set keep_running=false → stop
             // button press during phase 2 → ignore, keep beeping (no more snooze)
         }
         gpio_set_level(ALARM_PIN, BUZZER_OFF);
-        gpio_set_level(VIBRATION_PIN, VIBRATION_OFF);
+        set_vibration_active(false);
         if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(BEEP_INTERVAL_2)) > 0) {
             if (!keep_running) break;   // serial dismissed → stop
         }
@@ -210,7 +239,8 @@ void buzzer_pattern_task(void* arg){
 cleanup:
     // --- CLEANUP ---
     gpio_set_level(ALARM_PIN, BUZZER_OFF);
-    gpio_set_level(VIBRATION_PIN, VIBRATION_OFF);
+    set_vibration_active(false);
+    gpio_reset_pin(VIBRATION_PIN); // Reset pin to release LEDC config
     firebase_send_log("ALARM_DISMISSED", "Alarm dismissed successfully");
     ESP_LOGI(TAG, "Alarm dismissed.");
     is_alarm_active = false;
