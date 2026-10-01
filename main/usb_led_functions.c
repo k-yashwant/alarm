@@ -1,4 +1,8 @@
 #include "usb_led_functions.h"
+#include <string.h>
+#include "esp_system.h"
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
 
 static const char *TAG = "USB_LED_FUNCTIONS";
 
@@ -16,6 +20,20 @@ static bool s_usb_installed = false;
 
 static void blink_led(void);
 static void configure_led(void);
+
+void reboot_to_bootloader(void)
+{
+    ESP_LOGW("BOOTLOADER", "Jumping from TinyUSB to ROM Bootloader...");
+    flush_usb_logs();
+    vTaskDelay(pdMS_TO_TICKS(100));
+
+    // Force download boot on next reset via silicon RTC register
+    REG_WRITE(RTC_CNTL_OPTION1_REG, RTC_CNTL_FORCE_DOWNLOAD_BOOT);
+    esp_restart();
+}
+
+static char s_cmd_buf[32];
+static size_t s_cmd_idx = 0;
 
 void init_serial_tinyusb(bool fast_boot)
 {
@@ -40,10 +58,6 @@ void init_serial_tinyusb(bool fast_boot)
 // Called from the TinyUSB task when host sends serial data (not ISR context).
 void tinyusb_cdc_rx_callback(int itf, cdcacm_event_t *event)
 {
-    if (input_queue == NULL) {
-        return;
-    }
-
     size_t rx_size = 0;
     do {
         esp_err_t ret = tinyusb_cdcacm_read(itf, rx_buf, sizeof(rx_buf) - 1, &rx_size);
@@ -52,7 +66,26 @@ void tinyusb_cdc_rx_callback(int itf, cdcacm_event_t *event)
         }
 
         for (size_t i = 0; i < rx_size; i++) {
-            xQueueSend(input_queue, &rx_buf[i], 0);
+            char c = (char)rx_buf[i];
+
+            // Detect "bootloader" command terminated by newline or carriage return
+            if (c == '\r' || c == '\n') {
+                if (s_cmd_idx > 0) {
+                    s_cmd_buf[s_cmd_idx] = '\0';
+                    if (strcmp(s_cmd_buf, "bootloader") == 0) {
+                        reboot_to_bootloader();
+                    }
+                    s_cmd_idx = 0;
+                }
+            } else if (s_cmd_idx < sizeof(s_cmd_buf) - 1) {
+                if (s_cmd_idx > 0 || (c != ' ' && c != '\t')) {
+                    s_cmd_buf[s_cmd_idx++] = c;
+                }
+            }
+
+            if (input_queue != NULL) {
+                xQueueSend(input_queue, &rx_buf[i], 0);
+            }
         }
     } while (rx_size == sizeof(rx_buf) - 1);
 }

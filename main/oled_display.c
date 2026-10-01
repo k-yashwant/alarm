@@ -36,6 +36,7 @@ static TaskHandle_t s_time_task_handle;
 static bool s_initialized;
 static bool s_powered;
 static bool s_alarm_active;
+static bool s_wifi_connected;
 static time_t s_next_alarm_time;
 static uint8_t s_framebuffer[OLED_H_RES * OLED_V_RES / 8];
 
@@ -406,6 +407,47 @@ void oled_display_set_next_alarm(time_t alarm_time)
     oled_display_show_time(time(NULL));
 }
 
+void oled_display_set_wifi_connected(bool connected)
+{
+    s_wifi_connected = connected;
+    oled_display_show_time(time(NULL));
+}
+
+/**
+ * Draw a tiny WiFi fan icon (9x9 pixels) at position (x, y).
+ *
+ * The icon consists of three concentric quarter-circle arcs opening
+ * upward plus a dot at the bottom-centre — matching the standard
+ * WiFi symbol.  It is 9 px wide and 9 px tall.
+ *
+ *   Pattern (. = off, # = on):
+ *     .###.  row 0  outer arc
+ *     #...#  row 1
+ *     ..#..  row 2  (gap between outer and mid)
+ *     .###.  row 3  mid arc
+ *     #...#  row 4  (disabled — just the side pixels)
+ *     ..#..  row 5  inner arc centre dot
+ *     .....  row 6
+ *     ..#..  row 7  base dot
+ *     .....  row 8
+ *
+ * We hard-code 5x9 pixel columns as bitmasks (bit0 = top row).
+ */
+static void oled_draw_wifi_icon(int x, int y)
+{
+    // Outer arc (top of the fan) — 5 pixels wide, rows 0-2
+    oled_set_pixel(x+2, y+0, true); oled_set_pixel(x+3, y+0, true); oled_set_pixel(x+4, y+0, true);
+    oled_set_pixel(x+5, y+0, true); oled_set_pixel(x+6, y+0, true);
+    oled_set_pixel(x+1, y+1, true); oled_set_pixel(x+7, y+1, true);
+    oled_set_pixel(x+0, y+2, true); oled_set_pixel(x+8, y+2, true);
+    // Mid arc — rows 4-5
+    oled_set_pixel(x+3, y+4, true); oled_set_pixel(x+4, y+4, true); oled_set_pixel(x+5, y+4, true);
+    oled_set_pixel(x+2, y+5, true); oled_set_pixel(x+6, y+5, true);
+    // Inner dot — rows 7-8
+    oled_set_pixel(x+4, y+7, true); oled_set_pixel(x+5, y+7, true);
+    oled_set_pixel(x+4, y+8, true); oled_set_pixel(x+5, y+8, true);
+}
+
 void oled_display_show_time(time_t now)
 {
     if (!s_initialized || !s_powered) {
@@ -443,7 +485,9 @@ void oled_display_show_time(time_t now)
             snprintf(bat_text, sizeof(bat_text), "---");
         }
     }
-    int bat_x = 127 - (strlen(bat_text) * 6) - 8;
+    // Keep the battery indicator right-aligned regardless of WiFi state.
+    // When present, the 9px WiFi icon sits to its left with a 1px gap.
+    int bat_x = 127 - (int)(strlen(bat_text) * 6);
 
     // 2. Format next alarm time (using 3-letter day symbol and HH:MM)
     char next_alarm_text[16] = "";
@@ -458,7 +502,7 @@ void oled_display_show_time(time_t now)
     char date_text[32];
     strftime(date_text, sizeof(date_text), "%a, %d %b %Y", &timeinfo);
     string_to_upper(date_text);
-    int date_x = (128 - (strlen(date_text) * 6)) / 2;
+    int date_x = (128 - (int)(strlen(date_text) * 6)) / 2;
 
     // 4. Render Layout
     memset(s_framebuffer, 0, sizeof(s_framebuffer));
@@ -468,7 +512,10 @@ void oled_display_show_time(time_t now)
         oled_draw_text(8, 4, next_alarm_text, 1);
     }
     
-    // Top Right: Charge status/battery
+    // Top Right: battery stays at the edge; WiFi is immediately to its left.
+    if (s_wifi_connected) {
+        oled_draw_wifi_icon(bat_x - 10, 1);
+    }
     oled_draw_text(bat_x, 4, bat_text, 1);
     
     // Middle: Current time

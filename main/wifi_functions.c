@@ -27,46 +27,26 @@
 #include "esp_crt_bundle.h"
 #include "system_events.h"
 
+extern const char firebase_roots_pem_start[] asm("_binary_firebase_roots_pem_start");
+extern const char firebase_roots_pem_end[]   asm("_binary_firebase_roots_pem_end");
 
 
 #define FIREBASE_ID_TOKEN_SIZE 2048
 #define FIREBASE_URL_BUFFER_SIZE 2300
 #define FIREBASE_AUTH_RESPONSE_BUFFER_SIZE 4096
 #define FIREBASE_HTTP_RX_BUFFER_SIZE 2048
-#define FIREBASE_HTTP_TX_BUFFER_SIZE 3072
+#define FIREBASE_HTTP_TX_BUFFER_SIZE 2048
 
-const char *firebase_root_cert = \
-"-----BEGIN CERTIFICATE-----\n" \
-"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\n" \
-"bP6MvPJwNQzcmRk13NfIRmPVNnGuV/u3gm3c\n" \
-"-----END CERTIFICATE-----\n";
+// Mutex to serialize all HTTPS/TLS operations — prevents concurrent handshakes
+// that exhaust the ESP32-S2's limited internal SRAM (~320 KB).
+static SemaphoreHandle_t s_firebase_http_mutex = NULL;
+
+static void init_firebase_http_mutex(void)
+{
+    if (s_firebase_http_mutex == NULL) {
+        s_firebase_http_mutex = xSemaphoreCreateMutex();
+    }
+}
 
 #define CAMPUS_WIFI_SSID "CAMPUS_SECURED"
 #define EAP_METHOD ESP_EAP_TYPE_PEAP
@@ -87,6 +67,7 @@ static char firebase_id_token[FIREBASE_ID_TOKEN_SIZE];
 static time_t firebase_token_expires_at = 0;
 #define MAX_WIFI_RETRIES 5
 static int s_retry_num = 0;
+
 
 static bool firebase_auth_is_configured(void)
 {
@@ -131,6 +112,8 @@ static bool firebase_refresh_id_token(void)
         return true;
     }
 
+    ESP_LOGI(TAG, "Firebase Auth: refreshing ID token via Google Identity Toolkit...");
+
     static char auth_url[256];
     snprintf(auth_url, sizeof(auth_url),
              "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=%s",
@@ -141,27 +124,35 @@ static bool firebase_refresh_id_token(void)
              "{\"email\":\"%s\",\"password\":\"%s\",\"returnSecureToken\":true}",
              FIREBASE_AUTH_EMAIL, FIREBASE_AUTH_PASSWORD);
 
+    if (s_firebase_http_mutex != NULL) {
+        xSemaphoreTake(s_firebase_http_mutex, portMAX_DELAY);
+    }
+
     esp_http_client_config_t config = {
         .url = auth_url,
         .method = HTTP_METHOD_POST,
         .transport_type = HTTP_TRANSPORT_OVER_SSL,
-        .crt_bundle_attach = esp_crt_bundle_attach,
+        .cert_pem = firebase_roots_pem_start,
         .buffer_size = FIREBASE_HTTP_RX_BUFFER_SIZE,
         .buffer_size_tx = FIREBASE_HTTP_TX_BUFFER_SIZE,
+        .timeout_ms = 15000,
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (client == NULL) {
         ESP_LOGE(TAG, "Firebase Auth: failed to init HTTP client");
+        if (s_firebase_http_mutex != NULL) xSemaphoreGive(s_firebase_http_mutex);
         return false;
     }
 
     esp_http_client_set_header(client, "Content-Type", "application/json");
 
+    ESP_LOGI(TAG, "Firebase Auth: connecting to identitytoolkit.googleapis.com...");
     esp_err_t err = esp_http_client_open(client, strlen(post_body));
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Firebase Auth: open failed (%s)", esp_err_to_name(err));
         esp_http_client_cleanup(client);
+        if (s_firebase_http_mutex != NULL) xSemaphoreGive(s_firebase_http_mutex);
         return false;
     }
 
@@ -169,6 +160,7 @@ static bool firebase_refresh_id_token(void)
     if (written < 0) {
         ESP_LOGE(TAG, "Firebase Auth: write failed");
         esp_http_client_cleanup(client);
+        if (s_firebase_http_mutex != NULL) xSemaphoreGive(s_firebase_http_mutex);
         return false;
     }
 
@@ -178,6 +170,10 @@ static bool firebase_refresh_id_token(void)
     static char auth_response[FIREBASE_AUTH_RESPONSE_BUFFER_SIZE];
     bool read_ok = http_read_all(client, auth_response, sizeof(auth_response));
     esp_http_client_cleanup(client);
+    if (s_firebase_http_mutex != NULL) xSemaphoreGive(s_firebase_http_mutex);
+
+
+
 
     if (!read_ok) {
         return false;
@@ -280,8 +276,17 @@ static void event_handler(void* arg, esp_event_base_t event_base,
 
 void connect_campus_wifi(){
 
+    init_firebase_http_mutex();
+
     if (is_wifi_initialized){
         ESP_LOGI(TAG, "Wifi Already Initialised");
+        EventBits_t bits = xEventGroupGetBits(s_wifi_event_group);
+        if (!wifi_ip || (bits & WIFI_CONNECTED_BIT) == 0) {
+            ESP_LOGI(TAG, "WiFi initialized but disconnected — reconnecting...");
+            xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+            s_retry_num = 0;
+            esp_wifi_connect();
+        }
         return;
     }
     ESP_LOGI(TAG, "Creating wifi event group");
@@ -335,8 +340,17 @@ void connect_campus_wifi(){
 
 void connect_home_wifi(){
 
+    init_firebase_http_mutex();
+
     if (is_wifi_initialized){
         ESP_LOGI(TAG, "Wifi Already Initialised");
+        EventBits_t bits = xEventGroupGetBits(s_wifi_event_group);
+        if (!wifi_ip || (bits & WIFI_CONNECTED_BIT) == 0) {
+            ESP_LOGI(TAG, "WiFi initialized but disconnected — reconnecting...");
+            xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+            s_retry_num = 0;
+            esp_wifi_connect();
+        }
         return;
     }
     ESP_LOGI(TAG, "Creating wifi event group");
@@ -467,16 +481,17 @@ bool parse_alarm_json(void) {
         return false;
     }
 
-    // Wait here until WIFI_CONNECTED_BIT is set, or 10 seconds pass.
-    // pdFALSE = Don't clear the bit after exit (keep us known as connected)
-    // pdTRUE = Wait for all bits (doesn't matter here as we only look for one)
+    // Wait for WiFi only — TIME_SYNCED_BIT may already be set from boot SNTP,
+    // or may never be set again on wakeup cycles. Don't block on it.
     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
-        WIFI_CONNECTED_BIT | TIME_SYNCED_BIT,
+        WIFI_CONNECTED_BIT,
         pdFALSE,
         pdTRUE,
         pdMS_TO_TICKS(10000)); // 10 Second Timeout
 
     if (bits & WIFI_CONNECTED_BIT) {
+        ESP_LOGI(TAG, "parse_alarm_json: WiFi connected, resolving Firebase URL...");
+
         // 1. Initialize an empty config to return in case of failure
         alarm_storage_t result;
         result.count = 0; // Default to 0 alarms
@@ -489,22 +504,32 @@ bool parse_alarm_json(void) {
 
         static char firebase_url[FIREBASE_URL_BUFFER_SIZE];
         if (!firebase_build_rtdb_url("/alarms", firebase_url, sizeof(firebase_url))) {
+            ESP_LOGE(TAG, "parse_alarm_json: firebase_build_rtdb_url failed");
             return false;
         }
+
+        // Serialize TLS — taken after token refresh completes to prevent recursion/deadlock
+        if (s_firebase_http_mutex != NULL) {
+            xSemaphoreTake(s_firebase_http_mutex, portMAX_DELAY);
+        }
+
+        ESP_LOGI(TAG, "parse_alarm_json: connecting to Firebase RTDB...");
 
         // 3. Configure HTTP Client
         esp_http_client_config_t config = {
             .url = firebase_url,
             .method = HTTP_METHOD_GET,
             .transport_type = HTTP_TRANSPORT_OVER_SSL,
-            .crt_bundle_attach = esp_crt_bundle_attach,
+            .cert_pem = firebase_roots_pem_start,
             .buffer_size = FIREBASE_HTTP_RX_BUFFER_SIZE,
             .buffer_size_tx = FIREBASE_HTTP_TX_BUFFER_SIZE,
+            .timeout_ms = 15000,
         };
 
         esp_http_client_handle_t client = esp_http_client_init(&config);
         if (client == NULL) {
             ESP_LOGE(TAG, "Failed to initialize HTTP client");
+            if (s_firebase_http_mutex != NULL) xSemaphoreGive(s_firebase_http_mutex);
             return false;
         }
 
@@ -513,15 +538,22 @@ bool parse_alarm_json(void) {
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "Failed to open connection (%s)", esp_err_to_name(err));
             esp_http_client_cleanup(client);
+            if (s_firebase_http_mutex != NULL) xSemaphoreGive(s_firebase_http_mutex);
             return false;
         }
+
 
         // 4. Fetch Headers (Determine content length)
         int content_length = esp_http_client_fetch_headers(client);
         int status = esp_http_client_get_status_code(client);
         if (status < 200 || status >= 300) {
-            ESP_LOGE(TAG, "Firebase alarm fetch denied/failed: HTTP %d", status);
+            if (http_read_all(client, rx_buffer, sizeof(rx_buffer))) {
+                ESP_LOGE(TAG, "Firebase alarm fetch denied/failed: HTTP %d, response: %s", status, rx_buffer);
+            } else {
+                ESP_LOGE(TAG, "Firebase alarm fetch denied/failed: HTTP %d", status);
+            }
             esp_http_client_cleanup(client);
+            if (s_firebase_http_mutex != NULL) xSemaphoreGive(s_firebase_http_mutex);
             return false;
         }
 
@@ -530,6 +562,7 @@ bool parse_alarm_json(void) {
         if (content_length >= BUFFER_SIZE) {
             ESP_LOGE(TAG, "Error: JSON too large (%d bytes) for buffer (%d bytes)\n", content_length, BUFFER_SIZE);
             esp_http_client_cleanup(client);
+            if (s_firebase_http_mutex != NULL) xSemaphoreGive(s_firebase_http_mutex);
             return false;
         }
 
@@ -548,6 +581,7 @@ bool parse_alarm_json(void) {
             if (read_len < 0) {
                 ESP_LOGE(TAG, "Error reading from HTTP client: %d", read_len);
                 esp_http_client_cleanup(client);
+                if (s_firebase_http_mutex != NULL) xSemaphoreGive(s_firebase_http_mutex);
                 return false;
             }
             if (read_len == 0) {
@@ -567,11 +601,14 @@ bool parse_alarm_json(void) {
         
         ESP_LOGI(TAG, "JSON Received: %s\n", rx_buffer);
 
+        // Release the mutex now — we have the data, JSON parsing is CPU-only
+        esp_http_client_cleanup(client);
+        if (s_firebase_http_mutex != NULL) xSemaphoreGive(s_firebase_http_mutex);
+
         // 6. Parse JSON with cJSON
         cJSON *root = cJSON_Parse(rx_buffer);
         if (root == NULL) {
             printf("Error parsing JSON syntax\n");
-            esp_http_client_cleanup(client);
             return false;
         }
 
@@ -579,7 +616,6 @@ bool parse_alarm_json(void) {
         if (!cJSON_IsArray(alarms_array)) {
             ESP_LOGE(TAG, "Firebase response is not an alarms array");
             cJSON_Delete(root);
-            esp_http_client_cleanup(client);
             return false;
         }
 
@@ -616,7 +652,6 @@ bool parse_alarm_json(void) {
 
         // 8. Cleanup
         cJSON_Delete(root); // Free cJSON internal memory
-        esp_http_client_cleanup(client);
 
         current_alarm_config = result;
         return result.count > 0;
@@ -670,12 +705,16 @@ static void firebase_send_log_perform(const char *event, const char *message)
         return;
     }
 
-    // ---- 2. Send HTTP POST ----
+    // ---- 2. Send HTTP POST (serialized with mutex) ----
+    if (s_firebase_http_mutex != NULL) {
+        xSemaphoreTake(s_firebase_http_mutex, portMAX_DELAY);
+    }
+
     esp_http_client_config_t config = {
         .url            = firebase_url,
         .method         = HTTP_METHOD_POST,
         .transport_type = HTTP_TRANSPORT_OVER_SSL,
-        .crt_bundle_attach = esp_crt_bundle_attach,
+        .cert_pem       = firebase_roots_pem_start,
         .buffer_size = FIREBASE_HTTP_RX_BUFFER_SIZE,
         .buffer_size_tx = FIREBASE_HTTP_TX_BUFFER_SIZE,
     };
@@ -683,6 +722,7 @@ static void firebase_send_log_perform(const char *event, const char *message)
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (client == NULL) {
         ESP_LOGE(TAG, "firebase_send_log: failed to init HTTP client");
+        if (s_firebase_http_mutex != NULL) xSemaphoreGive(s_firebase_http_mutex);
         return;
     }
 
@@ -692,6 +732,7 @@ static void firebase_send_log_perform(const char *event, const char *message)
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "firebase_send_log: open failed (%s)", esp_err_to_name(err));
         esp_http_client_cleanup(client);
+        if (s_firebase_http_mutex != NULL) xSemaphoreGive(s_firebase_http_mutex);
         return;
     }
 
@@ -708,6 +749,7 @@ static void firebase_send_log_perform(const char *event, const char *message)
     }
 
     esp_http_client_cleanup(client);
+    if (s_firebase_http_mutex != NULL) xSemaphoreGive(s_firebase_http_mutex);
 }
 
 static void firebase_log_task(void *pvParameters)
@@ -727,6 +769,12 @@ static void firebase_log_task(void *pvParameters)
                 continue;
             }
 
+            // Wait for time sync before sending — TLS cert validation requires valid clock
+            if ((bits & TIME_SYNCED_BIT) == 0) {
+                ESP_LOGW(TAG, "firebase_log_task: Time not synced yet, skipping log %s", msg.event);
+                continue;
+            }
+
             firebase_send_log_perform(msg.event, msg.message);
         }
     }
@@ -734,21 +782,8 @@ static void firebase_log_task(void *pvParameters)
 
 void firebase_send_log(const char *event, const char *message)
 {
-    if (firebase_log_queue == NULL) {
-        firebase_log_queue = xQueueCreate(15, sizeof(firebase_log_msg_t));
-        if (firebase_log_queue != NULL) {
-            xTaskCreate(firebase_log_task, "firebase_log_task", 8192, NULL, 3, NULL);
-        } else {
-            ESP_LOGE(TAG, "Failed to create Firebase log queue");
-            return;
-        }
-    }
-
-    firebase_log_msg_t msg;
-    strlcpy(msg.event, event, sizeof(msg.event));
-    strlcpy(msg.message, message, sizeof(msg.message));
-
-    if (xQueueSend(firebase_log_queue, &msg, 0) != pdTRUE) {
-        ESP_LOGW(TAG, "Firebase log queue full, dropping log: [%s] %s", event, message);
-    }
+    // Remote logging is disabled while the alarm data path is validated.
+    // USB logging remains active through app_log_vprintf().
+    (void)event;
+    (void)message;
 }

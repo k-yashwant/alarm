@@ -14,6 +14,7 @@ void oled_display_on(void);
 void oled_display_off(void);
 void oled_display_set_alarm_active(bool active);
 void oled_display_set_next_alarm(time_t alarm_time);
+void oled_display_set_wifi_connected(bool connected);
 void oled_display_show_time(time_t now);
 
 #endif

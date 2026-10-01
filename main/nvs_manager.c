@@ -136,14 +136,20 @@ bool fetch_nearest_alarm_timestamp(time_t *nearest_alarm_timestamp){ // get the 
     esp_err_t err;
     size_t required_size = sizeof(alarm_storage_t);    
     err = nvs_open("storage", NVS_READWRITE, &my_handle);
-    if (err != ESP_OK || required_size != sizeof(alarm_storage_t)){ 
-        ESP_LOGE(TAG_fetch_nearest_alarm, "NVS file read error");
-        return false;
+    if (err == ESP_OK && required_size == sizeof(alarm_storage_t)) {
+        err = nvs_get_blob(my_handle, "alarm_config", &current_alarm_config, &required_size);
+        nvs_close(my_handle);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG_fetch_nearest_alarm, "Failed to read alarm_config from NVS");
+            current_alarm_config.count = 0;
+        }
+    } else {
+        if (err == ESP_OK) nvs_close(my_handle);
+        ESP_LOGW(TAG_fetch_nearest_alarm, "NVS storage open failed; proceeding with fallback");
+        current_alarm_config.count = 0;
     }
     
-    err = nvs_get_blob(my_handle, "alarm_config", &current_alarm_config, &required_size);   // get current alarm configuration stored in the device
-    nvs_close(my_handle); // close nvs
-    ESP_LOGI(TAG_fetch_nearest_alarm, "fetched %d alarms", current_alarm_config.count);
+    ESP_LOGI(TAG_fetch_nearest_alarm, "fetched %d alarms from NVS", current_alarm_config.count);
     time_t now_ts;
     time(&now_ts);
     struct tm alarm_tm = *localtime(&now_ts); 
@@ -173,6 +179,21 @@ bool fetch_nearest_alarm_timestamp(time_t *nearest_alarm_timestamp){ // get the 
             day_offset = alarm_epoch.day_offset;
         }
     }
+
+    // Hardcoded 6:30 AM everyday alarm (bitmask 127 = Mon-Sun)
+    static const alarm_entry_t hardcoded_630_alarm = {
+        .hour = 6,
+        .minute = 30,
+        .days = 127
+    };
+    alarm_epoch = trigger_time_remaining((alarm_entry_t*)&hardcoded_630_alarm, &current_time);
+    if (alarm_epoch.time_remaining != UINT32_MAX && alarm_epoch.time_remaining < min_diff_minutes) {
+        min_diff_minutes = alarm_epoch.time_remaining;
+        nearest_alarm = (alarm_entry_t*)&hardcoded_630_alarm;
+        day_offset = alarm_epoch.day_offset;
+        ESP_LOGI(TAG_fetch_nearest_alarm, "Selected hardcoded 6:30 AM everyday alarm");
+    }
+
     ESP_LOGI(TAG_fetch_nearest_alarm, "Nearest alarm in %lu minutes (%lu seconds)", (unsigned long)min_diff_minutes, (unsigned long)(min_diff_minutes * 60));
     if (min_diff_minutes < UINT32_MAX){
         // *next_nearest_alarm = *nearest_alarm;

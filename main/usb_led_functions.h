@@ -20,7 +20,7 @@ extern led_strip_handle_t led_strip;
 #include "sdkconfig.h"
 
 // --- LOGGING CONFIGURATION ---
-#define LOG_QUEUE_SIZE  50
+#define LOG_QUEUE_SIZE  20
 #define LOG_MSG_MAX_LEN 256 // Increased to handle hex dumps if needed
 #define INPUT_QUEUE_SIZE 128 //
 
@@ -45,5 +45,6 @@ void usb_log_task(void *arg);
 void setup_usb_from_example();
 void flush_usb_logs();
 void uninstall_usb();
+void reboot_to_bootloader(void);
 
 #endif 
